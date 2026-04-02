@@ -1,0 +1,999 @@
+const STORAGE_KEY = "personal-habit-tracker-v1";
+const CALENDAR_EVENTS_KEY = "personal-habit-tracker-calendar-events-v1";
+const THEME_KEY = "personal-habit-tracker-theme";
+const SCHEME_KEY = "personal-habit-tracker-scheme";
+const USERNAME_KEY = "personal-habit-tracker-username";
+const DAY_NAMES = [
+  "HÉTFŐ",
+  "KEDD",
+  "SZERDA",
+  "CSÜTÖRTÖK",
+  "PÉNTEK",
+  "SZOMBAT",
+  "VASÁRNAP"
+];
+const DAILY_QUOTES = [
+  "A kis lépésekből épülnek a nagy változások.",
+  "Nem kell tökéletesnek lenned, csak következetesnek.",
+  "A mai egyetlen pipa is közelebb visz ahhoz, aki lenni szeretnél.",
+  "A lendület gyakran egy apró döntéssel kezdődik.",
+  "Amit ma megismételsz, abból lesz a holnapi erőd.",
+  "A fegyelem csendes, de messzire visz.",
+  "Haladj nyugodtan, de ne állj meg."
+];
+
+const sampleHabits = [
+  {
+    id: crypto.randomUUID(),
+    name: "Reggeli nyújtás",
+    reason: "Jobban indul tőle a nap",
+    frequency: "daily",
+    target: 7,
+    color: "#f97316",
+    completions: [dateOffset(0), dateOffset(-1), dateOffset(-2), dateOffset(-4)],
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Mélymunka blokk",
+    reason: "Védjen napi egy fókuszált órát",
+    frequency: "weekly",
+    target: 4,
+    color: "#0f766e",
+    completions: [dateOffset(0), dateOffset(-1), dateOffset(-3), dateOffset(-5)],
+    createdAt: new Date().toISOString()
+  }
+];
+
+const state = {
+  habits: loadHabits(),
+  calendarEvents: loadCalendarEvents(),
+  theme: loadTheme(),
+  scheme: loadScheme(),
+  activeView: "overview",
+  calendarDate: startOfMonth(new Date())
+};
+
+const habitForm = document.getElementById("habitForm");
+const habitsList = document.getElementById("habitsList");
+const statsGrid = document.getElementById("statsGrid");
+const weeklyOverview = document.getElementById("weeklyOverview");
+const todayLabel = document.getElementById("todayLabel");
+const midnightCountdown = document.getElementById("midnightCountdown");
+const focusSummary = document.getElementById("focusSummary");
+const heroGreeting = document.getElementById("heroGreeting");
+const dailyQuote = document.getElementById("dailyQuote");
+const resetSamplesButton = document.getElementById("resetSamplesButton");
+const habitCardTemplate = document.getElementById("habitCardTemplate");
+const habitFrequencyInput = document.getElementById("habitFrequency");
+const habitTargetInput = document.getElementById("habitTarget");
+const habitColorInput = document.getElementById("habitColor");
+const targetLabel = document.getElementById("targetLabel");
+const lightModeButton = document.getElementById("lightModeButton");
+const darkModeButton = document.getElementById("darkModeButton");
+const welcomeModal = document.getElementById("welcomeModal");
+const welcomeForm = document.getElementById("welcomeForm");
+const welcomeNameInput = document.getElementById("welcomeName");
+const exportDataButton = document.getElementById("exportDataButton");
+const importDataButton = document.getElementById("importDataButton");
+const importFileInput = document.getElementById("importFileInput");
+const backupStatus = document.getElementById("backupStatus");
+const importCalendarButton = document.getElementById("importCalendarButton");
+const calendarFileInput = document.getElementById("calendarFileInput");
+const calendarStatus = document.getElementById("calendarStatus");
+const overviewTabButton = document.getElementById("overviewTabButton");
+const calendarTabButton = document.getElementById("calendarTabButton");
+const overviewView = document.getElementById("overviewView");
+const calendarView = document.getElementById("calendarView");
+const prevMonthButton = document.getElementById("prevMonthButton");
+const nextMonthButton = document.getElementById("nextMonthButton");
+const calendarMonthLabel = document.getElementById("calendarMonthLabel");
+const calendarWeekdays = document.getElementById("calendarWeekdays");
+const calendarGrid = document.getElementById("calendarGrid");
+const tabBar = document.querySelector(".tab-bar");
+const themeSwitch = document.querySelector(".theme-switch");
+const schemeSelect = document.getElementById("schemeSelect");
+
+initialize();
+
+function initialize() {
+  todayLabel.textContent = new Intl.DateTimeFormat("hu-HU", {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  }).format(new Date());
+  dailyQuote.textContent = getDailyQuote();
+  updateMidnightCountdown();
+  window.setInterval(updateMidnightCountdown, 1000);
+
+  applyTheme(state.theme);
+  applyScheme(state.scheme);
+  syncTargetInput();
+  updateGreeting();
+  schemeSelect.value = state.scheme;
+
+  habitForm.addEventListener("submit", handleCreateHabit);
+  habitFrequencyInput.addEventListener("change", syncTargetInput);
+  lightModeButton.addEventListener("click", () => setTheme("light"));
+  darkModeButton.addEventListener("click", () => setTheme("dark"));
+  schemeSelect.addEventListener("change", (event) => setScheme(event.target.value));
+  welcomeForm.addEventListener("submit", handleWelcomeSubmit);
+  exportDataButton.addEventListener("click", exportAppData);
+  importDataButton.addEventListener("click", () => importFileInput.click());
+  importFileInput.addEventListener("change", handleImportData);
+  importCalendarButton.addEventListener("click", () => calendarFileInput.click());
+  calendarFileInput.addEventListener("change", handleCalendarImport);
+  overviewTabButton.addEventListener("click", () => setActiveView("overview"));
+  calendarTabButton.addEventListener("click", () => setActiveView("calendar"));
+  prevMonthButton.addEventListener("click", () => shiftCalendarMonth(-1));
+  nextMonthButton.addEventListener("click", () => shiftCalendarMonth(1));
+  resetSamplesButton.addEventListener("click", () => {
+    state.habits = structuredClone(sampleHabits);
+    persistHabits();
+    setBackupStatus("Minta szokások betöltve.", "success");
+    render();
+  });
+
+  if (!loadUserName()) {
+    openWelcomeModal();
+  }
+
+  render();
+}
+
+function handleCreateHabit(event) {
+  event.preventDefault();
+
+  const formData = new FormData(habitForm);
+  const frequency = String(formData.get("habitFrequency"));
+  const habit = {
+    id: crypto.randomUUID(),
+    name: String(formData.get("habitName")).trim(),
+    reason: String(formData.get("habitReason")).trim(),
+    frequency,
+    target: frequency === "daily" ? 7 : Number(formData.get("habitTarget")) || 1,
+    color: String(formData.get("habitColor")) || "#f97316",
+    completions: [],
+    createdAt: new Date().toISOString()
+  };
+
+  state.habits.unshift(habit);
+  habitForm.reset();
+  habitColorInput.value = "#f97316";
+  syncTargetInput();
+  persistHabits();
+  render();
+}
+
+function render() {
+  updateGreeting();
+  renderTabs();
+  renderStats();
+  renderHabits();
+  renderWeeklyOverview();
+  renderCalendar();
+}
+
+function renderStats() {
+  const totalHabits = state.habits.length;
+  const completedToday = state.habits.filter((habit) => isCompleteOnDate(habit, todayKey())).length;
+  const bestStreak = state.habits.reduce((max, habit) => Math.max(max, getStreak(habit)), 0);
+  const consistency = totalHabits === 0
+    ? 0
+    : Math.round(state.habits.reduce((sum, habit) => sum + getThirtyDayRate(habit), 0) / totalHabits);
+
+  focusSummary.textContent = totalHabits
+    ? `Ma ${completedToday} / ${totalHabits} szokás van kipipálva`
+    : "Add hozzá az első szokásodat, és indulhat a lendület";
+
+  const cards = [
+    {
+      label: "Mai teljesítés",
+      value: `${completedToday}/${totalHabits || 0}`,
+      detail: totalHabits ? "Gyors állapotkép a mai napról" : "Még nincs szokás"
+    },
+    {
+      label: "Legjobb jelenlegi sorozat",
+      value: `${bestStreak} nap`,
+      detail: "Ez most a legerősebb ritmusod"
+    },
+    {
+      label: "30 napos következetesség",
+      value: `${consistency}%`,
+      detail: "Átlagos teljesítési arány minden szokásnál"
+    },
+    {
+      label: "Heti sikerek",
+      value: `${countWeeklyWins()}`,
+      detail: "Ennyi szokás halad jól ezen a héten"
+    }
+  ];
+
+  statsGrid.innerHTML = cards.map((card) => `
+    <article class="stat-card">
+      <p class="stat-label">${card.label}</p>
+      <p class="stat-value">${card.value}</p>
+      <p class="stat-detail">${card.detail}</p>
+    </article>
+  `).join("");
+}
+
+function renderHabits() {
+  habitsList.innerHTML = "";
+
+  if (!state.habits.length) {
+    habitsList.innerHTML = `
+      <div class="empty-state">
+        Itt még nincs semmi. Adj hozzá egy szokást fent, és a követő helyben, a böngésződben menti az adatokat.
+      </div>
+    `;
+    return;
+  }
+
+  const weekDates = getCurrentWeekDates();
+
+  state.habits.forEach((habit) => {
+    const fragment = habitCardTemplate.content.cloneNode(true);
+    const article = fragment.querySelector(".habit-card");
+    const title = fragment.querySelector(".habit-title");
+    const reason = fragment.querySelector(".habit-reason");
+    const frequency = fragment.querySelector(".habit-frequency");
+    const streak = fragment.querySelector(".habit-streak");
+    const progress = fragment.querySelector(".habit-progress");
+    const week = fragment.querySelector(".habit-week");
+    const toggleButton = fragment.querySelector(".toggle-button");
+    const deleteButton = fragment.querySelector(".delete-button");
+
+    article.style.setProperty("--habit-color", habit.color);
+    title.textContent = habit.name;
+    reason.textContent = habit.reason || "Még nincs megjegyzés";
+    frequency.textContent = habit.frequency === "daily"
+      ? "Napi szokás"
+      : `${habit.target} alkalom hetente`;
+    streak.textContent = `${getStreak(habit)} napos sorozat`;
+    progress.textContent = `${getWeeklyCompletions(habit)}/${getWeeklyTarget(habit)} ezen a héten`;
+
+    week.innerHTML = "";
+
+    weekDates.forEach((date, index) => {
+      const button = document.createElement("button");
+      const done = isCompleteOnDate(habit, date);
+      const isToday = date === todayKey();
+      const isFuture = date > todayKey();
+
+      button.type = "button";
+      button.className = "day-pill";
+      button.style.setProperty("--habit-color", habit.color);
+      button.classList.toggle("is-complete", done);
+      button.classList.toggle("is-today", isToday);
+      button.classList.toggle("is-future", isFuture);
+      button.disabled = isFuture;
+      button.innerHTML = `
+        <strong>${DAY_NAMES[index]}</strong>
+        <small>${formatShortDate(date)}</small>
+        <span>${done ? "KÉSZ" : "NYITOTT"}</span>
+      `;
+
+      if (!isFuture) {
+        button.addEventListener("click", () => {
+          toggleCompletion(habit.id, date);
+        });
+      }
+
+      week.appendChild(button);
+    });
+
+    const todayDone = isCompleteOnDate(habit, todayKey());
+    toggleButton.textContent = todayDone ? "Mai nap kész" : "Mai nap gyors pipálása";
+    toggleButton.classList.toggle("is-complete", todayDone);
+    toggleButton.addEventListener("click", () => {
+      toggleCompletion(habit.id, todayKey());
+    });
+
+    deleteButton.addEventListener("click", () => {
+      state.habits = state.habits.filter((entry) => entry.id !== habit.id);
+      persistHabits();
+      render();
+    });
+
+    habitsList.appendChild(fragment);
+  });
+}
+
+function renderWeeklyOverview() {
+  weeklyOverview.innerHTML = "";
+
+  if (!state.habits.length) {
+    weeklyOverview.innerHTML = `
+      <div class="empty-state">
+        Itt jelenik meg a heti áttekintés, amint lesznek követett szokásaid.
+      </div>
+    `;
+    return;
+  }
+
+  state.habits.forEach((habit) => {
+    const completed = getWeeklyCompletions(habit);
+    const target = getWeeklyTarget(habit);
+    const percent = Math.min(100, Math.round((completed / target) * 100));
+    const wrapper = document.createElement("article");
+    wrapper.className = "weekly-card";
+    wrapper.style.setProperty("--habit-color", habit.color);
+    wrapper.innerHTML = `
+      <div class="weekly-header">
+        <div>
+          <div class="weekly-title">${habit.name}</div>
+          <div class="weekly-progress">${completed} / ${target} teljesítve ezen a héten</div>
+        </div>
+        <div class="weekly-progress">${percent}%</div>
+      </div>
+      <div class="meter">
+        <div style="width: ${percent}%"></div>
+      </div>
+    `;
+    weeklyOverview.appendChild(wrapper);
+  });
+}
+
+function toggleCompletion(habitId, date) {
+  const habit = state.habits.find((entry) => entry.id === habitId);
+  if (!habit) {
+    return;
+  }
+
+  if (habit.completions.includes(date)) {
+    habit.completions = habit.completions.filter((entry) => entry !== date);
+  } else {
+    habit.completions = [...habit.completions, date].sort();
+  }
+
+  persistHabits();
+  render();
+}
+
+function countWeeklyWins() {
+  return state.habits.filter((habit) => getWeeklyCompletions(habit) >= getWeeklyTarget(habit)).length;
+}
+
+function getWeeklyCompletions(habit) {
+  const weekDates = new Set(getCurrentWeekDates());
+  return habit.completions.filter((date) => weekDates.has(date)).length;
+}
+
+function getWeeklyTarget(habit) {
+  return habit.frequency === "daily" ? 7 : habit.target;
+}
+
+function getStreak(habit) {
+  const completions = new Set(habit.completions);
+  let streak = 0;
+
+  for (let index = 0; index < 365; index += 1) {
+    const key = dateOffset(-index);
+    if (completions.has(key)) {
+      streak += 1;
+      continue;
+    }
+
+    if (index === 0) {
+      continue;
+    }
+
+    break;
+  }
+
+  return streak;
+}
+
+function getThirtyDayRate(habit) {
+  const completions = new Set(habit.completions);
+  let total = 0;
+
+  for (let index = 0; index < 30; index += 1) {
+    if (completions.has(dateOffset(-index))) {
+      total += 1;
+    }
+  }
+
+  return Math.round((total / 30) * 100);
+}
+
+function getCurrentWeekDates() {
+  const monday = startOfWeek(new Date());
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return toDateKey(date);
+  });
+}
+
+function renderTabs() {
+  const isOverview = state.activeView === "overview";
+  tabBar.dataset.active = isOverview ? "overview" : "calendar";
+  overviewTabButton.classList.toggle("is-active", isOverview);
+  overviewTabButton.setAttribute("aria-selected", String(isOverview));
+  calendarTabButton.classList.toggle("is-active", !isOverview);
+  calendarTabButton.setAttribute("aria-selected", String(!isOverview));
+  overviewView.classList.toggle("is-active", isOverview);
+  calendarView.classList.toggle("is-active", !isOverview);
+}
+
+function setActiveView(view) {
+  const previousView = state.activeView;
+  state.activeView = view;
+  render();
+  animateTabTransition(view, previousView);
+}
+
+async function shiftCalendarMonth(offset) {
+  const next = new Date(state.calendarDate);
+  next.setMonth(next.getMonth() + offset);
+  state.calendarDate = startOfMonth(next);
+  renderCalendar();
+}
+
+function renderCalendar() {
+  calendarMonthLabel.textContent = new Intl.DateTimeFormat("hu-HU", {
+    year: "numeric",
+    month: "long"
+  }).format(state.calendarDate);
+
+  calendarWeekdays.innerHTML = DAY_NAMES.map((day) => `
+    <div class="calendar-weekday">${day}</div>
+  `).join("");
+
+  const dates = getCalendarGridDates(state.calendarDate);
+  const completionsByDate = buildCompletionMap();
+  const calendarEventsByDate = buildCalendarEventMap();
+
+  calendarGrid.innerHTML = dates.map((date) => {
+    const key = toDateKey(date);
+    const isCurrentMonth = date.getMonth() === state.calendarDate.getMonth();
+    const isToday = key === todayKey();
+    const items = [
+      ...(calendarEventsByDate.get(key) || []),
+      ...(completionsByDate.get(key) || [])
+    ];
+
+    const pills = items.length
+      ? items.map((item) => `
+          <div class="calendar-pill ${item.kind === "habit" ? "is-habit" : ""}" style="background:${item.color}">${item.name}</div>
+        `).join("")
+      : `<div class="backup-copy">Nincs jelölés</div>`;
+
+    return `
+      <article class="calendar-day ${isCurrentMonth ? "" : "is-other-month"} ${isToday ? "is-today" : ""}">
+        <div class="calendar-day-number">${date.getDate()}</div>
+        <div class="calendar-day-list">${pills}</div>
+      </article>
+    `;
+  }).join("");
+}
+
+function getCalendarGridDates(baseDate) {
+  const firstDay = startOfMonth(baseDate);
+  const start = startOfWeek(firstDay);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function buildCompletionMap() {
+  const map = new Map();
+
+  state.habits.forEach((habit) => {
+    habit.completions.forEach((date) => {
+      const entry = map.get(date) || [];
+      entry.push({ name: habit.name, color: habit.color, kind: "habit" });
+      map.set(date, entry);
+    });
+  });
+
+  return map;
+}
+
+function buildCalendarEventMap() {
+  const map = new Map();
+
+  state.calendarEvents.forEach((event) => {
+    const dates = getDatesBetween(event.startDate, event.endDate);
+    dates.forEach((date) => {
+      const entry = map.get(date) || [];
+      entry.push({ name: event.name, color: event.color, kind: "event" });
+      map.set(date, entry);
+    });
+  });
+
+  return map;
+}
+
+function isCompleteOnDate(habit, date) {
+  return habit.completions.includes(date);
+}
+
+function todayKey() {
+  return toDateKey(new Date());
+}
+
+function dateOffset(offset) {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  return toDateKey(date);
+}
+
+function toDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function startOfWeek(date) {
+  const copy = new Date(date);
+  const day = copy.getDay();
+  const diff = (day + 6) % 7;
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - diff);
+  return copy;
+}
+
+function formatShortDate(date) {
+  return new Intl.DateTimeFormat("hu-HU", {
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(`${date}T00:00:00`));
+}
+
+function loadHabits() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return structuredClone(sampleHabits);
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : structuredClone(sampleHabits);
+  } catch {
+    return structuredClone(sampleHabits);
+  }
+}
+
+function loadCalendarEvents() {
+  try {
+    const raw = localStorage.getItem(CALENDAR_EVENTS_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? sanitizeCalendarEvents(parsed) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistHabits() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.habits));
+}
+
+function persistCalendarEvents() {
+  localStorage.setItem(CALENDAR_EVENTS_KEY, JSON.stringify(state.calendarEvents));
+}
+
+function loadTheme() {
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  return storedTheme === "dark" ? "dark" : "light";
+}
+
+function loadUserName() {
+  return localStorage.getItem(USERNAME_KEY)?.trim() || "";
+}
+
+function loadScheme() {
+  const storedScheme = localStorage.getItem(SCHEME_KEY);
+  return ["ios", "winxp", "linux"].includes(storedScheme) ? storedScheme : "ios";
+}
+
+function setTheme(theme) {
+  state.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+  animateThemeTransition();
+  applyTheme(theme);
+}
+
+function setScheme(scheme) {
+  state.scheme = scheme;
+  localStorage.setItem(SCHEME_KEY, scheme);
+  animateThemeTransition();
+  applyScheme(scheme);
+}
+
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+  themeSwitch.dataset.active = theme;
+  lightModeButton.classList.toggle("is-active", theme === "light");
+  darkModeButton.classList.toggle("is-active", theme === "dark");
+}
+
+function applyScheme(scheme) {
+  document.body.dataset.scheme = scheme;
+}
+
+function syncTargetInput() {
+  const isDaily = habitFrequencyInput.value === "daily";
+  habitTargetInput.value = isDaily ? "7" : "4";
+  habitTargetInput.disabled = isDaily;
+  targetLabel.firstChild.textContent = isDaily ? "Heti cél (automatikus)" : "Heti cél";
+}
+
+function formatUserName(value) {
+  if (!value) {
+    return "Barátom";
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function updateGreeting() {
+  const userName = formatUserName(loadUserName());
+  heroGreeting.textContent = `Szia, ${userName}!`;
+}
+
+function getDailyQuote() {
+  const today = todayKey();
+  const parts = today.split("-").map(Number);
+  const seed = parts[0] + parts[1] + parts[2];
+  return `„${DAILY_QUOTES[seed % DAILY_QUOTES.length]}”`;
+}
+
+function updateMidnightCountdown() {
+  const now = new Date();
+  const nextMidnight = new Date(now);
+  nextMidnight.setHours(24, 0, 0, 0);
+
+  const diffMs = Math.max(0, nextMidnight.getTime() - now.getTime());
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  midnightCountdown.textContent = `⏳ ${hours}:${minutes}:${seconds}`;
+}
+
+function openWelcomeModal() {
+  welcomeModal.classList.add("is-open");
+  welcomeModal.setAttribute("aria-hidden", "false");
+  welcomeNameInput.focus();
+}
+
+function closeWelcomeModal() {
+  welcomeModal.classList.remove("is-open");
+  welcomeModal.setAttribute("aria-hidden", "true");
+}
+
+function handleWelcomeSubmit(event) {
+  event.preventDefault();
+  const name = String(new FormData(welcomeForm).get("welcomeName")).trim();
+
+  if (!name) {
+    welcomeNameInput.focus();
+    return;
+  }
+
+  localStorage.setItem(USERNAME_KEY, name);
+  updateGreeting();
+  closeWelcomeModal();
+}
+
+function exportAppData() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    userName: loadUserName(),
+    theme: state.theme,
+    habits: state.habits
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = todayKey();
+
+  link.href = url;
+  link.download = `habit-tracker-backup-${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  setBackupStatus("Az adatok exportálása sikerült.", "success");
+}
+
+async function handleImportData(event) {
+  const [file] = event.target.files || [];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const raw = await file.text();
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || !Array.isArray(parsed.habits)) {
+      throw new Error("invalid_backup");
+    }
+
+    state.habits = sanitizeHabits(parsed.habits);
+    persistHabits();
+
+    if (typeof parsed.userName === "string" && parsed.userName.trim()) {
+      localStorage.setItem(USERNAME_KEY, parsed.userName.trim());
+      updateGreeting();
+    }
+
+    if (parsed.theme === "light" || parsed.theme === "dark") {
+      setTheme(parsed.theme);
+    }
+
+    setBackupStatus("A mentés visszatöltése sikerült.", "success");
+    render();
+  } catch {
+    setBackupStatus("A fájl nem olvasható be. Válassz érvényes JSON mentést.", "error");
+  } finally {
+    importFileInput.value = "";
+  }
+}
+
+function sanitizeHabits(habits) {
+  return habits
+    .filter((habit) => habit && typeof habit.name === "string")
+    .map((habit) => ({
+      id: typeof habit.id === "string" && habit.id ? habit.id : crypto.randomUUID(),
+      name: habit.name.trim() || "Névtelen szokás",
+      reason: typeof habit.reason === "string" ? habit.reason.trim() : "",
+      frequency: habit.frequency === "weekly" ? "weekly" : "daily",
+      target: clampTarget(habit.frequency === "weekly" ? Number(habit.target) || 1 : 7),
+      color: typeof habit.color === "string" && habit.color ? habit.color : "#f97316",
+      completions: Array.isArray(habit.completions)
+        ? habit.completions.filter((entry) => typeof entry === "string")
+        : [],
+      createdAt: typeof habit.createdAt === "string" ? habit.createdAt : new Date().toISOString()
+    }));
+}
+
+function clampTarget(value) {
+  return Math.min(7, Math.max(1, value));
+}
+
+function setBackupStatus(message, type = "") {
+  setStatusMessage(backupStatus, message, type);
+}
+
+async function handleCalendarImport(event) {
+  const [file] = event.target.files || [];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const raw = await file.text();
+    const importedEvents = parseIcsToCalendarEvents(raw);
+
+    if (!importedEvents.length) {
+      throw new Error("no_events");
+    }
+
+    mergeImportedCalendarEvents(importedEvents);
+    persistCalendarEvents();
+    render();
+    setStatusMessage(
+      calendarStatus,
+      `${importedEvents.length} naptári esemény importálva.`,
+      "success"
+    );
+  } catch {
+    setStatusMessage(
+      calendarStatus,
+      "Nem sikerült feldolgozni a naptárfájlt. Exportálj `.ics` fájlt a Google Naptárból, majd próbáld újra.",
+      "error"
+    );
+  } finally {
+    calendarFileInput.value = "";
+  }
+}
+
+function parseIcsToCalendarEvents(raw) {
+  const normalized = unfoldIcsLines(raw);
+  const events = normalized.split("BEGIN:VEVENT").slice(1);
+  const importedEvents = [];
+
+  events.forEach((eventBlock) => {
+    const summary = getIcsField(eventBlock, "SUMMARY");
+    if (!summary) {
+      return;
+    }
+
+    const normalizedName = decodeIcsText(summary).trim();
+    if (!normalizedName) {
+      return;
+    }
+
+    const dtStartLine = getIcsLine(eventBlock, "DTSTART");
+    const dtEndLine = getIcsLine(eventBlock, "DTEND");
+    const dateRange = extractEventDateRange(dtStartLine, dtEndLine);
+
+    if (!dateRange) {
+      return;
+    }
+
+    importedEvents.push({
+      id: crypto.randomUUID(),
+      name: normalizedName,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      color: randomCalendarColor(normalizedName)
+    });
+  });
+
+  return importedEvents;
+}
+
+function unfoldIcsLines(raw) {
+  return raw.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+}
+
+function getIcsField(block, fieldName) {
+  const line = getIcsLine(block, fieldName);
+
+  if (!line) {
+    return "";
+  }
+
+  return line.slice(line.indexOf(":") + 1).trim();
+}
+
+function getIcsLine(block, fieldName) {
+  return block
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith(`${fieldName}:`) || entry.startsWith(`${fieldName};`)) || "";
+}
+
+function decodeIcsText(value) {
+  return value
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\n/g, " ")
+    .replace(/\\\\/g, "\\");
+}
+
+function extractEventDateRange(dtStartLine, dtEndLine) {
+  const startValue = dtStartLine ? dtStartLine.slice(dtStartLine.indexOf(":") + 1).trim() : "";
+  const endValue = dtEndLine ? dtEndLine.slice(dtEndLine.indexOf(":") + 1).trim() : "";
+  const startDate = extractDateKey(startValue);
+
+  if (!startDate) {
+    return null;
+  }
+
+  const isAllDay = dtStartLine.includes("VALUE=DATE");
+  const rawEndDate = extractDateKey(endValue);
+  let endDate = startDate;
+
+  if (rawEndDate) {
+    if (isAllDay) {
+      const previousDay = new Date(`${rawEndDate}T00:00:00`);
+      previousDay.setDate(previousDay.getDate() - 1);
+      endDate = toDateKey(previousDay);
+    } else {
+      endDate = rawEndDate;
+    }
+  }
+
+  if (endDate < startDate) {
+    endDate = startDate;
+  }
+
+  return { startDate, endDate };
+}
+
+function extractDateKey(value) {
+  if (!value) {
+    return "";
+  }
+
+  const match = value.match(/(\d{4})(\d{2})(\d{2})/);
+  if (!match) {
+    return "";
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function mergeImportedCalendarEvents(importedEvents) {
+  const existingKeys = new Set(
+    state.calendarEvents.map((event) => `${event.name}|${event.startDate}|${event.endDate}`)
+  );
+
+  importedEvents.forEach((event) => {
+    const key = `${event.name}|${event.startDate}|${event.endDate}`;
+    if (!existingKeys.has(key)) {
+      state.calendarEvents.push(event);
+      existingKeys.add(key);
+    }
+  });
+}
+
+function randomCalendarColor(seedText) {
+  const palette = ["#f97316", "#0f766e", "#2563eb", "#7c3aed", "#db2777", "#ca8a04"];
+  let hash = 0;
+
+  for (const char of seedText) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return palette[hash % palette.length];
+}
+
+function sanitizeCalendarEvents(events) {
+  return events
+    .filter((event) => event && typeof event.name === "string")
+    .map((event) => ({
+      id: typeof event.id === "string" && event.id ? event.id : crypto.randomUUID(),
+      name: event.name.trim() || "Névtelen esemény",
+      startDate: typeof event.startDate === "string" ? event.startDate : todayKey(),
+      endDate: typeof event.endDate === "string" ? event.endDate : (typeof event.startDate === "string" ? event.startDate : todayKey()),
+      color: typeof event.color === "string" && event.color ? event.color : randomCalendarColor(event.name || "event"),
+      source: "manual"
+    }));
+}
+
+function getDatesBetween(startDate, endDate) {
+  const dates = [];
+  const cursor = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+
+  while (cursor.getTime() <= end.getTime()) {
+    dates.push(toDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function setStatusMessage(element, message, type = "") {
+  element.textContent = message;
+  element.classList.remove("is-success", "is-error");
+
+  if (type) {
+    element.classList.add(`is-${type}`);
+  }
+}
+
+function animateThemeTransition() {
+  document.body.classList.add("theme-animating");
+  window.clearTimeout(animateThemeTransition.timeoutId);
+  animateThemeTransition.timeoutId = window.setTimeout(() => {
+    document.body.classList.remove("theme-animating");
+  }, 280);
+}
+
+function animateTabTransition(view, previousView) {
+  if (view === previousView) {
+    return;
+  }
+
+  const target = view === "overview" ? overviewView : calendarView;
+  target.classList.remove("is-entering");
+  void target.offsetWidth;
+  target.classList.add("is-entering");
+
+  window.setTimeout(() => {
+    target.classList.remove("is-entering");
+  }, 260);
+}

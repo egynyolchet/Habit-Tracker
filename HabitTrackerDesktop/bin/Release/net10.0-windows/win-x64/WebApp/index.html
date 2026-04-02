@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Szokáskövető</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-main">
+        <div class="hero-topline">
+          <p id="eyebrowLabel" class="eyebrow">Terv követő v0.0.2</p>
+          <div class="hero-badges">
+            <label class="language-picker" for="languageSelect">
+              <select id="languageSelect">
+                <option value="hu">HU</option>
+                <option value="en">ENG</option>
+                <option value="pl">PL</option>
+                <option value="de">DE</option>
+              </select>
+            </label>
+            <button id="editProfileButton" class="ghost-button hero-profile-button" type="button">Név módosítása</button>
+          </div>
+        </div>
+        <h1 id="heroGreeting">Szia, Domin!</h1>
+        <p id="heroCopy" class="hero-copy">
+          Kövesd, ami számít és nézd át a hetedet felesleges bonyodalmak nélkül.
+        </p>
+        <p class="daily-quote" id="dailyQuote"></p>
+      </div>
+      <div class="hero-card">
+        <div class="theme-switch" role="group" aria-label="Téma választó">
+          <button id="lightModeButton" class="theme-button" type="button">Világos</button>
+          <button id="darkModeButton" class="theme-button" type="button">Sötét</button>
+        </div>
+        <div class="scheme-picker">
+          <label id="schemeLabel" class="scheme-label" for="schemeSelect">Oldal séma</label>
+          <select id="schemeSelect">
+            <option value="aurora">Aurora</option>
+            <option value="sand">Sand</option>
+            <option value="graphite">Graphite</option>
+          </select>
+        </div>
+        <p id="heroDateLabel" class="hero-date-label">Ma</p>
+        <p class="hero-date" id="todayLabel"></p>
+        <div class="countdown-block">
+          <p class="countdown-value" id="midnightCountdown">⏳ 00:00:00</p>
+        </div>
+        <p class="hero-date-subtle" id="focusSummary"></p>
+      </div>
+    </header>
+
+    <main>
+      <section class="tab-bar" role="tablist" aria-label="Fő nézetek">
+        <button id="overviewTabButton" class="tab-button is-active" type="button" role="tab" aria-selected="true">Áttekintés</button>
+        <button id="calendarTabButton" class="tab-button" type="button" role="tab" aria-selected="false">Naptár</button>
+      </section>
+
+      <section id="overviewView" class="tab-view is-active">
+        <div class="layout">
+          <section class="panel add-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="addPanelKicker" class="panel-kicker">Új cél</p>
+                <h2 id="addPanelTitle">Adj hozzá egy eseményt!</h2>
+              </div>
+            </div>
+
+            <form id="habitForm" class="habit-form">
+              <label>
+                <span id="habitNameLabel">Szokás neve</span>
+                <input id="habitName" name="habitName" type="text" maxlength="40" placeholder="Reggeli séta" required>
+              </label>
+
+              <label>
+                <span id="habitReasonLabel">Miért fontos?</span>
+                <input id="habitReason" name="habitReason" type="text" maxlength="80" placeholder="Egyenletesebbé teszi az energiaszintemet">
+              </label>
+
+              <div class="form-row">
+                <label>
+                  <span id="habitFrequencyLabel">Ritmus</span>
+                  <select id="habitFrequency" name="habitFrequency">
+                    <option value="daily">Napi</option>
+                    <option value="weekly">Heti</option>
+                  </select>
+                </label>
+
+                <label id="targetLabel">
+                  Heti cél
+                  <input id="habitTarget" name="habitTarget" type="number" min="1" max="7" value="1" required>
+                </label>
+
+                <label>
+                  <span id="habitColorLabel">Szín</span>
+                  <input id="habitColor" name="habitColor" type="color" value="#f97316">
+                </label>
+              </div>
+
+              <button id="habitSubmitButton" class="primary-button" type="submit">Szokás hozzáadása</button>
+            </form>
+
+            <div class="backup-tools">
+              <div>
+                <p id="backupKicker" class="panel-kicker">Biztonsági mentés</p>
+                <h3 id="backupTitle">Adatok exportálása és importálása</h3>
+                <p id="backupCopy" class="backup-copy">Mentsd le a szokásaidat egy fájlba, vagy tölts vissza egy korábbi mentést.</p>
+              </div>
+              <div class="backup-actions">
+                <button id="exportDataButton" class="ghost-button" type="button">Adatok exportálása</button>
+                <button id="importDataButton" class="ghost-button" type="button">Mentés visszatöltése</button>
+                <input id="importFileInput" type="file" accept="application/json" hidden>
+              </div>
+              <p id="backupStatus" class="backup-status" aria-live="polite"></p>
+            </div>
+          </section>
+
+          <section class="stats-grid" id="statsGrid"></section>
+
+          <section class="panel habits-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="habitsPanelKicker" class="panel-kicker">Heti nézet</p>
+                <h2 id="habitsPanelTitle">Szokásaid</h2>
+              </div>
+              <button id="resetSamplesButton" class="ghost-button" type="button">Minta betöltése</button>
+            </div>
+            <div id="habitsList" class="habits-list"></div>
+          </section>
+
+          <section class="panel insights-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="insightsKicker" class="panel-kicker">Lendület</p>
+                <h2 id="insightsTitle">Heti áttekintés</h2>
+              </div>
+            </div>
+            <div id="weeklyOverview" class="weekly-overview"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="calendarView" class="tab-view">
+        <div class="calendar-stack">
+          <div class="panel calendar-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="calendarKicker" class="panel-kicker">Naptár</p>
+                <h2 id="calendarTitle">Havi nézet</h2>
+              </div>
+              <div class="calendar-nav">
+                <button id="prevMonthButton" class="ghost-button" type="button">Előző</button>
+                <button id="nextMonthButton" class="ghost-button" type="button">Következő</button>
+              </div>
+            </div>
+            <div class="calendar-month" id="calendarMonthLabel"></div>
+            <div class="calendar-grid calendar-grid-head" id="calendarWeekdays"></div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </div>
+
+          <div class="panel calendar-import-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="calendarImportKicker" class="panel-kicker">Google Naptár</p>
+                <h2 id="calendarImportTitle">Naptár importálása</h2>
+              </div>
+            </div>
+            <p id="calendarImportCopy" class="backup-copy">Tölts fel egy Google Naptárból exportált `.ics` fájlt. Az események külön naptári bejegyzésként jelennek meg, és a többnapos programok minden érintett napra átnyúlnak.</p>
+            <div class="backup-actions">
+              <button id="importCalendarButton" class="ghost-button" type="button">Google Naptár import</button>
+            </div>
+            <input id="calendarFileInput" type="file" accept=".ics,text/calendar" hidden>
+            <p id="calendarStatus" class="backup-status" aria-live="polite"></p>
+          </div>
+
+          <div class="panel calendar-import-panel">
+            <div class="panel-heading">
+              <div>
+                <p id="manualEventKicker" class="panel-kicker">Kézi esemény</p>
+                <h2 id="manualEventTitle">Program hozzáadása</h2>
+              </div>
+            </div>
+            <form id="calendarEventForm" class="habit-form">
+              <label>
+                <span id="calendarEventNameLabel">Esemény neve</span>
+                <input id="calendarEventName" name="calendarEventName" type="text" maxlength="60" placeholder="Például: Edzés" required>
+              </label>
+
+              <div class="form-row">
+                <label>
+                  <span id="calendarEventStartDateLabel">Kezdőnap</span>
+                  <input id="calendarEventStartDate" name="calendarEventStartDate" type="date" required>
+                </label>
+
+                <label>
+                  <span id="calendarEventEndDateLabel">Zárónap</span>
+                  <input id="calendarEventEndDate" name="calendarEventEndDate" type="date" required>
+                </label>
+
+                <label>
+                  <span id="calendarEventColorLabel">Szín</span>
+                  <input id="calendarEventColor" name="calendarEventColor" type="color" value="#2563eb">
+                </label>
+              </div>
+
+              <label class="checkbox-row">
+                <input id="calendarEventAllDay" name="calendarEventAllDay" type="checkbox" checked>
+                <span id="calendarEventAllDayLabel">Egész napos esemény</span>
+              </label>
+
+              <div class="form-row" id="calendarTimeRow">
+                <label>
+                  <span id="calendarEventStartTimeLabel">Kezdés</span>
+                  <input id="calendarEventStartTime" name="calendarEventStartTime" type="time" value="09:00">
+                </label>
+
+                <label>
+                  <span id="calendarEventEndTimeLabel">Befejezés</span>
+                  <input id="calendarEventEndTime" name="calendarEventEndTime" type="time" value="10:00">
+                </label>
+              </div>
+
+              <label>
+                <span id="calendarEventNotesLabel">Megjegyzés</span>
+                <input id="calendarEventNotes" name="calendarEventNotes" type="text" maxlength="120" placeholder="Rövid leírás vagy helyszín">
+              </label>
+
+              <div class="backup-actions">
+                <button id="calendarEventSubmitButton" class="primary-button" type="submit">Esemény mentése</button>
+                <button id="cancelCalendarEditButton" class="ghost-button" type="button" hidden>Szerkesztés megszakítása</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="welcomeModal" class="welcome-modal" aria-hidden="true">
+    <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+      <p id="welcomeKicker" class="panel-kicker">Első indítás</p>
+      <h2 id="welcomeTitle">Hogy szólíthatlak?</h2>
+      <p id="welcomeCopy" class="welcome-copy">
+        Írd be a neved, és a Habit Tracker személyre szabottan fog köszönteni.
+      </p>
+      <form id="welcomeForm" class="welcome-form">
+        <label>
+          <span id="welcomeNameLabel">Neved</span>
+          <input id="welcomeName" name="welcomeName" type="text" maxlength="32" placeholder="Például: Pisti" required>
+        </label>
+        <button id="welcomeSubmitButton" class="primary-button" type="submit">Kezdjük</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="site-credit">Made by: Fejes Dominik - 2026</div>
+
+  <div id="calendarEventModal" class="welcome-modal" aria-hidden="true">
+    <div class="welcome-card event-modal-card" role="dialog" aria-modal="true" aria-labelledby="calendarEventModalTitle">
+      <div class="panel-heading">
+        <div>
+          <p id="eventModalKicker" class="panel-kicker">Program részletei</p>
+          <h2 id="calendarEventModalTitle">Esemény</h2>
+        </div>
+        <div class="backup-actions">
+          <button id="editCalendarEventButton" class="ghost-button" type="button">Szerkesztés</button>
+          <button id="deleteCalendarEventButton" class="delete-button" type="button">Törlés</button>
+          <button id="closeCalendarEventModalButton" class="ghost-button" type="button">Bezárás</button>
+        </div>
+      </div>
+      <div class="event-modal-details">
+        <div class="event-modal-row">
+          <span id="eventModalWhenLabel" class="event-modal-label">Mikor</span>
+          <strong id="calendarEventModalWhen"></strong>
+        </div>
+        <div class="event-modal-row">
+          <span id="eventModalDurationLabel" class="event-modal-label">Időtartam</span>
+          <strong id="calendarEventModalDuration"></strong>
+        </div>
+        <div class="event-modal-row">
+          <span id="eventModalSourceLabel" class="event-modal-label">Forrás</span>
+          <strong id="calendarEventModalSource"></strong>
+        </div>
+        <div class="event-modal-row is-column">
+          <span id="eventModalNotesLabel" class="event-modal-label">Megjegyzés</span>
+          <p id="calendarEventModalNotes" class="backup-copy"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template id="habitCardTemplate">
+    <article class="habit-card">
+      <div class="habit-accent"></div>
+      <div class="habit-main">
+        <div class="habit-header">
+          <div>
+            <h3 class="habit-title"></h3>
+            <p class="habit-reason"></p>
+          </div>
+          <button class="delete-button" type="button" aria-label="Szokás törlése">Törlés</button>
+        </div>
+
+        <div class="habit-meta">
+          <span class="habit-frequency"></span>
+          <span class="habit-streak"></span>
+          <span class="habit-progress"></span>
+        </div>
+
+        <div class="habit-week-label">Heti jelölés: válaszd ki a napot</div>
+        <div class="habit-week"></div>
+
+        <div class="habit-actions">
+          <button class="toggle-button" type="button"></button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

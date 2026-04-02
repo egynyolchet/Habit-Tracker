@@ -1,0 +1,332 @@
+﻿<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Habit Tracker</title>
+
+  <link rel="icon"
+        type="image/svg+xml"
+        href='data:image/svg+xml;utf8,
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="%237CFFDD"/>
+              <stop offset="1" stop-color="%237CA6FF"/>
+            </linearGradient>
+          </defs>
+          <rect x="8" y="8" width="48" height="48" rx="14" fill="%230B1020" stroke="rgba(255,255,255,.18)" />
+          <path d="M22 33l7 7 15-18" fill="none" stroke="url(%23g)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>' />
+
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+
+<body>
+<script src="js/firebase-config.js"></script>
+<script src="js/firebase-bridge.js"></script>
+
+  <div class="bg" aria-hidden="true">
+    <div class="aurora"></div>
+    <div class="aurora2"></div>
+    <div class="grain"></div>
+    <div class="grain2"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <canvas id="confettiCanvas"></canvas>
+  <div class="heatTip" id="heatTip"></div>
+
+  <div class="wrap" id="appWrap">
+    <header>
+      <div class="title">
+        <h1>Habit Tracker</h1>
+        <div class="sub">v R1-W10-B29-P24 by Daniel Simon</div>
+      </div>      <div class="rightHeader">
+        <div class="pill" id="countdownPill">&#x23F3; --:--:--</div>
+
+        <div class="pill syncPill" id="syncPill">
+          <span class="dot" id="syncDot"></span>
+          <span id="todayPillText">Helyi mentés aktív</span>
+        </div>
+
+        <div class="accountWrap" id="accountWrap">
+          <button class="accountBtn" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="Fiók">
+            <img id="accountAvatar" alt="Avatar" style="display:none;" />
+            <span id="accountFallback">&#128100;</span>
+            <span class="accountCaret">&#9662;</span>
+          </button>
+
+          <div class="accountMenu" id="accountMenu" aria-hidden="true">
+            <div class="small muted" id="authText">Offline mód</div>
+
+            <div class="langSeg" aria-label="Language">
+              <button class="langOpt" id="langHU" type="button">HU</button>
+              <button class="langOpt" id="langEN" type="button">EN</button>
+            </div>
+
+            <div class="accountActions">
+              <button class="btn small accent" id="loginBtn" type="button">Google login</button>
+              <button class="btn small" id="logoutBtn" type="button" style="display:none;">Kilépés</button>
+            </div>
+
+            <div class="accountActions accountTools">
+              <button class="btn small backupBtn" id="exportBtn" type="button">Backup</button>
+              <button class="btn small" id="importBtn" type="button">Import</button>
+              <input id="importFile" type="file" accept="application/json" style="display:none" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card" data-card>
+        <div class="weekbar">
+          <div>
+            <h2 id="hWeek">Heti nézet</h2>
+            <div class="range" id="weekRange">—</div>
+          </div>
+
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <div class="ddBtn sortIconBtn" id="weekSortBtn" role="button" tabindex="0" title="Rendezés">
+              <svg class="sortIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 4v16"></path>
+                <path d="M3 7l3-3 3 3"></path>
+                <path d="M3 17l3 3 3-3"></path>
+                <path d="M11 7h10"></path>
+                <path d="M11 12h7"></path>
+                <path d="M11 17h4"></path>
+              </svg>
+            </div>
+
+            <button class="btn" id="prevWeekBtn">&#9664;</button>
+            <button class="btn" id="thisWeekBtn">Ma</button>
+            <button class="btn" id="nextWeekBtn">&#9654;</button>
+          </div>
+        </div>
+
+        <div id="dailyWeekSpot"></div>
+
+        <table>
+          <thead>
+            <tr><th id="thHabit">Szokás</th><th id="thWeek">Hét</th></tr>
+          </thead>
+          <tbody id="weekBody"></tbody>
+        </table>
+      </section>
+
+      <aside class="stack">
+        <section class="card" data-card id="dailyTasksCard">
+          <div class="row">
+            <div>
+              <h2 id="hDailyTasks">Napi taskok</h2>
+              <div class="small muted taskPanelDate" id="taskDayLabel">—</div>
+            </div>
+          </div>
+
+          <div class="carryBox" id="carryBox" style="display:none;">
+            <div class="carryText" id="carryText">—</div>
+            <div class="carryActions">
+              <button class="btn small accent" id="carryAllBtn" type="button">Áthozás</button>
+              <button class="btn small" id="carryDismissBtn" type="button">Most nem</button>
+            </div>
+          </div>
+
+          <form id="taskForm" class="inputrow">
+            <input id="taskInput" type="text" placeholder="pl. Bevásárlás, e-mail, vágás" maxlength="80" />
+            <button class="btn accent" id="taskAddBtn" type="submit">Hozzáad</button>
+          </form>
+
+          <div class="small muted emptyNote" id="taskEmpty">Erre a napra még nincs feladat.</div>
+          <div class="taskList" id="taskList"></div>
+        </section>
+
+
+        <section class="card" data-card>
+          <div class="row">
+            <h2 id="hNewHabit">Új szokás</h2>
+          </div>
+
+          <form id="addForm" class="inputrow">
+            <input id="habitInput" type="text" placeholder="pl. Edzés, Olvasás, Nyelvtanulás" maxlength="50" />
+            <button class="btn accent" id="addBtn" type="submit">Hozzáad</button>
+          </form>
+
+          <div class="habitListWrap collapsed" id="habitListWrap">
+            <div class="habitlist" id="habitList"></div>
+            <div class="habitFade" aria-hidden="true"></div>
+          </div>
+          <div class="habitCollapseDock">
+            <button class="habitCollapseBtn" id="habitPanelToggle" type="button" aria-expanded="false" aria-controls="habitListWrap" title="Lenyitás">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 10l5 5 5-5"></path>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="card" data-card>
+          <div class="row">
+            <h2 id="hSuccess">Sikeresség</h2>
+            <div class="chartTop">
+              <div class="small muted" id="chartHint"></div>
+              <div class="ddBtn" id="rangeBtn" role="button" tabindex="0">
+                <span id="rangeLabel">14 nap</span>
+                <span class="ddCaret"></span>
+              </div>
+            </div>
+          </div>
+
+          <canvas class="chart" id="successChart" width="900" height="380"></canvas>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="k" id="kHabits">Aktív szokások</div>
+              <div class="v" id="statHabits">0</div>
+            </div>
+            <div class="stat" id="statTodayCard">
+              <div class="k" id="kToday">Mai sikeresség</div>
+              <div class="v" id="statTodayPct">0%</div>
+            </div>
+            <div class="stat">
+              <div class="k" id="kWeekChecks">Heti pipák</div>
+              <div class="v" id="statWeekChecks">0 / 0</div>
+            </div>
+            <div class="stat">
+              <div class="k" id="kBestStreak">Leghosszabb streak</div>
+              <div class="v" id="statBestStreak">0</div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="card" data-card style="margin-top:16px; margin-bottom:22px;">
+      <div class="row">
+        <h2 id="hCalendar">Naptár nézet</h2>
+        <div class="heatLegend">
+          <span id="lessLbl">kevesebb</span>
+          <span class="legendDots">
+            <span class="legendDot" id="leg0"></span>
+            <span class="legendDot" id="leg1"></span>
+            <span class="legendDot" id="leg2"></span>
+            <span class="legendDot" id="leg3"></span>
+            <span class="legendDot" id="leg4"></span>
+          </span>
+          <span id="moreLbl">több</span>
+        </div>
+      </div>
+
+      <div class="heatHeader">
+        <div class="small muted" id="heatSub">Utolsó 12 hét • intenzitás = napi sikeresség</div>
+        <div class="heatNav">
+          <div class="viewSeg" aria-label="Calendar view">
+            <button class="viewOpt" id="viewWeek" type="button">HÉT</button>
+            <button class="viewOpt" id="viewYear" type="button">ÉV</button>
+          </div>
+          <button class="btn icon" id="heatPrev" title="Korábbi hetek">&#9664;</button>
+          <button class="btn small" id="heatNowBtn" type="button">Ma</button>
+          <button class="btn icon" id="heatNext" title="Közelebbi hetek">&#9654;</button>
+        </div>
+      </div>
+
+      <div id="weekHeatWrap">
+        <div class="heatXWrap">
+          <div></div>
+          <div class="heatX" id="heatX"></div>
+        </div>
+
+        <div class="heatWrap">
+          <div class="heatY" id="heatY"></div>
+          <div class="heatGrid" id="heatGrid"></div>
+        </div>
+
+        <div class="heatPct">
+          <div></div>
+          <div class="pctGrid" id="heatPct"></div>
+        </div>
+      </div>
+
+      <div class="yearWrap" id="yearWrap" style="display:none">
+        <div class="yearGrid" id="yearGrid"></div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div id="footerLeft">© Daniel Simon</div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <div id="footerDate">—</div>
+        <a href="https://danielsimon.hu/habit-tracker" target="_blank" rel="noopener">danielsimon.hu/habit-tracker</a>
+      </div>
+    </footer>
+  </div>
+
+  <div class="floatingMenu" id="paletteMenu" aria-hidden="true">
+    <div class="menuHead">
+      <div class="menuTitle" id="palTitle">Szín paletta</div>
+      <button class="menuClose" id="palClose" type="button">Bezár</button>
+    </div>
+    <div id="paletteBody"></div>
+  </div>
+
+  <div class="ddMenuFixed" id="rangeMenu" aria-hidden="true" style="width:170px">
+    <div class="ddItem" data-value="7" id="r7">7 nap</div>
+    <div class="ddItem active" data-value="14" id="r14">14 nap</div>
+    <div class="ddItem" data-value="30" id="r30">30 nap</div>
+  </div>
+
+  <div class="ddMenuFixed" id="weekSortMenu" aria-hidden="true" style="width:240px">
+    <div class="ddItem active" data-value="created" id="sCreated">Létrehozás</div>
+    <div class="ddItem" data-value="abc" id="sAbc">ABC</div>
+    <div class="ddItem" data-value="streak" id="sStreak">Leghosszabb streak</div>
+    <div class="ddItem" data-value="week" id="sWeek">Heti pipák</div>
+  </div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
